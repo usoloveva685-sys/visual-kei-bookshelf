@@ -15,7 +15,7 @@ def http_get(url, headers=None, timeout=12):
         return r.read(), r.headers.get_content_type()
 
 def google(q):
-    url="https://www.googleapis.com/books/v1/volumes?maxResults=20&printType=books&q="+urllib.parse.quote(q)
+    url="https://www.googleapis.com/books/v1/volumes?maxResults=20&printType=books&langRestrict=ru&q="+urllib.parse.quote(q)
     data,_=http_get(url)
     j=json.loads(data)
     out=[]
