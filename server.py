@@ -108,7 +108,7 @@ def search(q):
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT / "static"), **kwargs)
+        super().__init__(*args, directory=str( ROOT), **kwargs)
 
     def do_GET(self):
         u=urllib.parse.urlsplit(self.path)
@@ -123,6 +123,6 @@ if __name__=="__main__":
     import os
     port=int(os.environ.get("PORT","8765"))
     # Render requires the service to listen on 0.0.0.0 and the assigned PORT.
-    Handler.directory=str(ROOT / "static")
+    Handler.directory=str( ROOT)
     print(f"Книжный шкаф: http://0.0.0.0:{port}")
     ThreadingHTTPServer(("0.0.0.0",port),Handler).serve_forever()
