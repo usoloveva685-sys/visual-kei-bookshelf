@@ -1,0 +1,13 @@
+{
+  "opds": [
+    [
+      "Lib.Ru",
+      "https://lib.ru/opds/"
+    ],
+    [
+      "НЭБ",
+      "https://mirror.rusneb.ru/opds/xml"
+    ]
+  ],
+  "notes": "Добавляй только OPDS endpoints, которые реально публикуют OpenSearch. Сервер сам обнаруживает rel=search."
+}
