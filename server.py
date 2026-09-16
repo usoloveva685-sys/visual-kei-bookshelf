@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-# Поисковый сервер книжного шкафа.
-# Python 3.10+; только стандартная библиотека.
 import json, re, urllib.parse, urllib.request
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent
-SOURCES = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))
-UA = "VisualKeiBookshelf/0.2"
+SOURCES = json.loads((ROOT / "sources.json").read_text(encoding="utf-8")) if (ROOT / "sources.json").exists() else {"opds": []}
+UA = "VisualKeiBookshelf/0.3 (+human-facing book discovery)"
 
 
 def http_get(url, headers=None, timeout=15):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json, application/atom+xml, application/xml, text/xml, */*", **(headers or {})})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read(), r.headers.get_content_type()
+
+
+def clean_isbn(value):
+    s = re.sub(r"[^0-9Xx]", "", value or "").upper()
+    return s if len(s) in (10, 13) else ""
 
 
 def norm(s):
@@ -23,252 +26,223 @@ def norm(s):
 
 
 def tokens(s):
-    return [x for x in re.findall(r"[\w]+", norm(s), flags=re.UNICODE) if len(x) > 1]
+    return [x for x in re.findall(r"[\w-]+", norm(s), flags=re.UNICODE) if len(x) > 1]
 
 
-def clean_isbn(s):
-    return re.sub(r"[^0-9Xx]", "", s or "").upper()
+def looks_isbn(q):
+    return clean_isbn(q) != ""
 
 
-def is_isbn(s):
-    x = clean_isbn(s)
-    return bool(re.fullmatch(r"(?:97[89]\d{10}|\d{9}[\dX])", x))
+def google_query(q):
+    url = "https://www.googleapis.com/books/v1/volumes?maxResults=40&printType=books&q=" + urllib.parse.quote(q)
+    data, _ = http_get(url)
+    j = json.loads(data)
+    out = []
+    for v in j.get("items", []):
+        x = v.get("volumeInfo", {})
+        ids = x.get("industryIdentifiers", []) or []
+        isbn = next((z.get("identifier", "") for z in ids if z.get("identifier")), "")
+        links = x.get("imageLinks") or {}
+        cover = links.get("thumbnail") or links.get("smallThumbnail") or ""
+        cover = cover.replace("http:", "https:")
+        out.append({
+            "title": x.get("title", ""),
+            "author": ", ".join(x.get("authors", [])),
+            "isbn": clean_isbn(isbn),
+            "cover": cover,
+            "source": "Google Books",
+            "language": x.get("language", ""),
+            "published": x.get("publishedDate", ""),
+            "publisher": x.get("publisher", ""),
+            "id": v.get("id", ""),
+        })
+    return out
 
 
-def lang_bonus(lang):
-    l = (lang or "").lower()
-    if l.startswith("ru"):
-        return 25
-    if l.startswith("uk") or l.startswith("be"):
-        return 10
-    return 0
+def google(q):
+    queries = []
+    isbn = clean_isbn(q)
+    if isbn:
+        queries.append("isbn:" + isbn)
+    else:
+        # Exact-ish title search first, then ordinary search. Google Books supports
+        # fielded queries such as intitle/inauthor; we intentionally do not force
+        # langRestrict because it can hide Russian records that are indexed poorly.
+        queries.extend([
+            'intitle:"' + q.replace('"', ' ') + '"',
+            q,
+        ])
+    out, seen = [], set()
+    for query in queries:
+        try:
+            for x in google_query(query):
+                key = (x.get("id") or "", norm(x.get("title")), norm(x.get("author")), x.get("isbn", ""))
+                if key in seen:
+                    continue
+                seen.add(key); out.append(x)
+        except Exception:
+            continue
+    return out
 
 
-def google_request(q, lang=None):
-    params = {"maxResults": "40", "printType": "books", "q": q}
-    if lang:
-        params["langRestrict"] = lang
-    url = "https://www.googleapis.com/books/v1/volumes?" + urllib.parse.urlencode(params)
+def openlibrary_query(params):
+    params = {**params, "limit": 50, "fields": "title,author_name,author_key,cover_i,isbn,language,edition_key,first_publish_year,publisher,subject"}
+    url = "https://openlibrary.org/search.json?" + urllib.parse.urlencode(params, doseq=True)
     data, _ = http_get(url)
     return json.loads(data)
 
 
-def google(q):
-    # Несколько независимых запросов: один не должен определять всю выдачу.
-    queries = []
-    raw = q.strip()
-    if is_isbn(raw):
-        queries = [("isbn:" + clean_isbn(raw), None)]
-    else:
-        # Точное название и обычный поиск. Русский фильтр пробуем, но не доверяем ему полностью.
-        queries = [
-            ('intitle:"' + raw.replace('"', ' ') + '"', "ru"),
-            ('intitle:"' + raw.replace('"', ' ') + '"', None),
-            (raw, "ru"),
-            (raw, None),
-        ]
-
-    out, seen = [], set()
-    for qq, lang in queries:
-        try:
-            j = google_request(qq, lang)
-        except Exception:
-            continue
-        for v in j.get("items", []):
-            x = v.get("volumeInfo", {}) or {}
-            ids = x.get("industryIdentifiers", []) or []
-            isbn13 = next((z.get("identifier", "") for z in ids if z.get("type") == "ISBN_13"), "")
-            isbn10 = next((z.get("identifier", "") for z in ids if z.get("type") == "ISBN_10"), "")
-            isbn = isbn13 or isbn10
-            cover = (x.get("imageLinks") or {}).get("thumbnail", "").replace("http:", "https:")
-            item = {
-                "title": x.get("title", ""),
-                "author": ", ".join(x.get("authors", [])),
-                "isbn": isbn,
-                "cover": cover,
-                "source": "Google Books",
-                "language": x.get("language", ""),
-                "published": x.get("publishedDate", ""),
-                "description": x.get("description", ""),
-            }
-            key = (norm(item["title"]), norm(item["author"]), clean_isbn(item["isbn"]))
-            if key not in seen and item["title"]:
-                seen.add(key)
-                out.append(item)
-    return out
-
-
 def openlibrary(q):
-    params_list = []
-    raw = q.strip()
-    if is_isbn(raw):
-        params_list = [{"isbn": clean_isbn(raw), "limit": "40"}]
+    isbn = clean_isbn(q)
+    variants = []
+    if isbn:
+        variants.append({"isbn": isbn})
     else:
-        # title-параметр даёт существенно более чистую выдачу для русских названий.
-        params_list = [
-            {"title": raw, "limit": "40"},
-            {"q": raw, "limit": "40"},
-        ]
-
+        variants.append({"title": q, "lang": "ru"})
+        variants.append({"q": 'title:"' + q.replace('"', ' ') + '"', "lang": "ru"})
+        variants.append({"q": q, "lang": "ru"})
+        # Do not exclude other languages; lang=ru is only a preference according to
+        # Open Library's API documentation.
+        variants.append({"q": q})
     out, seen = [], set()
-    for params in params_list:
+    for params in variants:
         try:
-            url = "https://openlibrary.org/search.json?" + urllib.parse.urlencode(params)
-            data, _ = http_get(url)
-            j = json.loads(data)
+            j = openlibrary_query(params)
+            for x in j.get("docs", []):
+                authors = ", ".join(x.get("author_name", []) or [])
+                isbns = x.get("isbn", []) or []
+                isbn1 = clean_isbn(isbns[0]) if isbns else ""
+                cover = f"https://covers.openlibrary.org/b/id/{x['cover_i']}-M.jpg" if x.get("cover_i") else ""
+                languages = x.get("language", []) or []
+                subjects = x.get("subject", []) or []
+                key = (norm(x.get("title")), norm(authors), isbn1)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({
+                    "title": x.get("title", ""),
+                    "author": authors,
+                    "isbn": isbn1,
+                    "cover": cover,
+                    "source": "Open Library",
+                    "language": languages,
+                    "published": str(x.get("first_publish_year", "") or ""),
+                    "publisher": ", ".join(x.get("publisher", [])[:3] or []),
+                    "subjects": subjects[:20],
+                    "edition_key": (x.get("edition_key") or [""])[0],
+                })
         except Exception:
             continue
-        for x in j.get("docs", []):
-            title = x.get("title", "") or ""
-            author = ", ".join(x.get("author_name", []) or [])
-            covers = x.get("cover_i")
-            cover = f"https://covers.openlibrary.org/b/id/{covers}-M.jpg" if covers else ""
-            isbns = x.get("isbn") or []
-            isbn = next((z for z in isbns if len(clean_isbn(z)) == 13), (isbns[0] if isbns else ""))
-            languages = x.get("language") or []
-            item = {
-                "title": title,
-                "author": author,
-                "isbn": isbn,
-                "cover": cover,
-                "source": "Open Library",
-                "language": languages[0] if languages else "",
-                "published": str(x.get("first_publish_year", "") or ""),
-                "description": "",
-                "subjects": x.get("subject", []) or [],
-            }
-            key = (norm(title), norm(author), clean_isbn(isbn))
-            if key not in seen and title:
-                seen.add(key)
-                out.append(item)
     return out
 
 
 ATOM = "http://www.w3.org/2005/Atom"
-OS = "http://a9.com/-/spec/opensearch/1.1/"
+OPENSEARCH = "http://a9.com/-/spec/opensearch/1.1/"
 
 
-def opds_search(root_url, q):
+def opds_search(root_url, q, source_name):
     raw, _ = http_get(root_url)
-    feed_root = ET.fromstring(raw)
+    root = ET.fromstring(raw)
     search_url = None
-    for link in feed_root.findall(f".//{{{ATOM}}}link"):
+    for link in root.findall(".//{%s}link" % ATOM):
         if link.attrib.get("rel") == "search" and "opensearchdescription+xml" in link.attrib.get("type", ""):
-            search_url = urllib.parse.urljoin(root_url, link.attrib.get("href", ""))
-            break
+            search_url = urllib.parse.urljoin(root_url, link.attrib.get("href", "")); break
     if not search_url:
         return []
     raw, _ = http_get(search_url)
     desc = ET.fromstring(raw)
     template = None
-    for u in desc.findall(f"{{{OS}}}Url"):
-        if "{searchTerms}" in u.attrib.get("template", ""):
-            template = u.attrib["template"]
-            break
+    for u in desc.findall("{%s}Url" % OPENSEARCH):
+        t = u.attrib.get("template", "")
+        if "{searchTerms}" in t:
+            template = t; break
     if not template:
         return []
     url = template.replace("{searchTerms}", urllib.parse.quote(q))
     raw, _ = http_get(urllib.parse.urljoin(root_url, url))
     feed = ET.fromstring(raw)
     out = []
-    for e in feed.findall(f"{{{ATOM}}}entry"):
-        title = (e.findtext(f"{{{ATOM}}}title") or "").strip()
-        author = (e.findtext(f"{{{ATOM}}}author/{{{ATOM}}}name") or "").strip()
-        ident = (e.findtext("{http://purl.org/dc/elements/1.1/}identifier") or "").strip()
+    for e in feed.findall("{%s}entry" % ATOM):
+        title = (e.findtext("{%s}title" % ATOM) or "").strip()
+        author = (e.findtext("{%s}author/{%s}name" % (ATOM, ATOM)) or "").strip()
+        ident = (e.findtext("{%s}identifier" % "http://purl.org/dc/elements/1.1/") or "").strip()
         cover = ""
-        for l in e.findall(f"{{{ATOM}}}link"):
+        for l in e.findall("{%s}link" % ATOM):
             rel = l.attrib.get("rel", "")
             typ = l.attrib.get("type", "")
             if "image" in rel or typ.startswith("image/"):
-                cover = urllib.parse.urljoin(root_url, l.attrib.get("href", ""))
-                break
+                cover = urllib.parse.urljoin(root_url, l.attrib.get("href", "")); break
         if title:
-            out.append({
-                "title": title, "author": author,
-                "isbn": clean_isbn(ident) if is_isbn(ident) else "",
-                "cover": cover, "source": "OPDS", "language": "ru"
-            })
+            out.append({"title": title, "author": author, "isbn": clean_isbn(ident), "cover": cover, "source": source_name + " (OPDS)"})
     return out
 
 
+def opds(q):
+    out = []
+    for item in SOURCES.get("opds", []):
+        if isinstance(item, list) and len(item) >= 2:
+            name, url = item[0], item[1]
+        elif isinstance(item, dict):
+            name, url = item.get("name", "OPDS"), item.get("url", "")
+        else:
+            continue
+        if not url:
+            continue
+        try: out.extend(opds_search(url, q, name))
+        except Exception: continue
+    return out
+
+
+def language_score(x):
+    lang = x.get("language", "")
+    if isinstance(lang, list):
+        lang = " ".join(lang)
+    lang = str(lang).lower()
+    if "rus" in lang or lang.strip() == "ru": return 25
+    if "eng" in lang or lang.strip() == "en": return -8
+    return 0
+
+
 def score(q, x):
-    qn = norm(q)
-    qt = tokens(q)
-    title = norm(x.get("title", ""))
-    author = norm(x.get("author", ""))
-    score = 0
+    qn, tn, an = norm(q), norm(x.get("title")), norm(x.get("author"))
+    if not qn: return 0
+    s = 0
+    if qn == tn: s += 160
+    elif qn in tn: s += 120
+    qt, tt = set(tokens(q)), set(tokens(x.get("title")))
+    if qt:
+        overlap = len(qt & tt) / len(qt)
+        s += round(overlap * 70)
+        if qt <= tt: s += 35
+    if qn in an: s += 35
+    s += language_score(x)
+    src = x.get("source", "")
+    if "Open Library" in src: s += 2
+    if any(w in (tn + " " + " ".join(x.get("subjects", []) or [])).lower() for w in ("fanfiction", "fan fiction", "фанфик", "фанфикшн")):
+        s -= 80
+    if not x.get("cover"): s -= 3
+    return s
 
-    # Главное — соответствие названия, а не случайное совпадение слов в описании.
-    if title == qn:
-        score += 220
-    elif qn and qn in title:
-        score += 150
-    else:
-        tt = set(tokens(title))
-        overlap = sum(1 for w in qt if w in tt)
-        score += overlap * 25
-        if qt and overlap == len(qt):
-            score += 55
 
-    # Авторские совпадения.
-    aq = set(qt) & set(tokens(author))
-    score += len(aq) * 18
-
-    score += lang_bonus(x.get("language", ""))
-
-    source = x.get("source", "")
-    if "Google Books" in source:
-        score += 8
-    elif "Open Library" in source:
-        score += 3
-
-    # Сборники/издания оставляем, но не позволяем им автоматически вытеснять точное название.
-    if "сборник" in title and qn != title:
-        score -= 8
-
-    # Явный фанфик/fiction шум — сильный штраф, но не ломаем поиск полностью.
-    blob = " ".join([title, " ".join(x.get("subjects", []) or [])]).lower()
-    if any(w in blob for w in ("fanfiction", "фанфик", "fan fiction")):
-        score -= 100
-
-    return score
+def dedup(results):
+    seen = set(); out = []
+    for x in sorted(results, key=lambda z: z["_score"], reverse=True):
+        isbn = x.get("isbn", "")
+        key = (isbn,) if isbn else (norm(x.get("title")), norm(x.get("author")))
+        if key in seen: continue
+        seen.add(key); x.pop("_score", None); out.append(x)
+    return out[:40]
 
 
 def search(q):
-    q = q.strip()
-    if not q:
-        return []
-
+    q = (q or "").strip()
+    if not q: return []
     allr = []
-    # Ошибки одного каталога не ломают остальные.
-    for fn in (google, openlibrary):
-        try:
-            allr.extend(fn(q))
-        except Exception:
-            pass
-
-    for name, url in SOURCES.get("opds", []):
-        try:
-            for x in opds_search(url, q):
-                x["source"] = name + " (OPDS)"
-                allr.append(x)
-        except Exception:
-            pass
-
-    # Дедупликация: одинаковые издания из разных источников объединяем;
-    # разные ISBN сохраняем как разные издания.
-    seen = set()
-    unique = []
-    for x in allr:
-        isbn = clean_isbn(x.get("isbn", ""))
-        key = (norm(x.get("title", "")), norm(x.get("author", "")), isbn)
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(x)
-
-    unique.sort(key=lambda x: score(q, x), reverse=True)
-    return unique[:60]
+    allr.extend(google(q))
+    allr.extend(openlibrary(q))
+    allr.extend(opds(q))
+    for x in allr: x["_score"] = score(q, x)
+    return dedup(allr)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -280,26 +254,20 @@ class Handler(SimpleHTTPRequestHandler):
         if u.path == "/api/search":
             q = urllib.parse.parse_qs(u.query).get("q", [""])[0].strip()
             try:
-                results = search(q)
-                body = json.dumps({"query": q, "results": results}, ensure_ascii=False).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(body)
+                body = json.dumps({"query": q, "results": search(q)}, ensure_ascii=False).encode("utf-8")
+                self.send_response(200); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(body)
             except Exception as e:
                 body = json.dumps({"query": q, "results": [], "error": str(e)}, ensure_ascii=False).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(body)
+                self.send_response(200); self.send_header("Content-Type", "application/json; charset=utf-8"); self.end_headers(); self.wfile.write(body)
             return
+        if u.path == "/api/health":
+            body = json.dumps({"ok": True, "sources": {"google": "enabled", "openlibrary": "enabled", "opds": len(SOURCES.get("opds", []))}}, ensure_ascii=False).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json; charset=utf-8"); self.end_headers(); self.wfile.write(body); return
         return super().do_GET()
 
 
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", "8765"))
-    Handler.directory = str(ROOT)
     print(f"Книжный шкаф: http://0.0.0.0:{port}")
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
