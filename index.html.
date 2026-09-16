@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Книжный шкаф — Visual Kei</title>
+<style>
+:root{
+  --bg:#090707; --wood:#17100f; --wood2:#2b1715; --edge:#75483c;
+  --red:#70232e; --cream:#eadfd3; --muted:#9d8a80;
+  --wallpaper:none; --wall-alpha:.28;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#080606;color:var(--cream);font-family:Georgia,serif}
+body{
+  min-height:100vh;
+  background:
+    linear-gradient(rgba(8,5,6,calc(1 - var(--wall-alpha))),rgba(8,5,6,calc(1 - var(--wall-alpha)))),
+    var(--wallpaper),
+    radial-gradient(circle at 50% 10%,#2a1618 0,#100a0b 42%,#050505 100%);
+  background-size:cover;background-position:center;background-attachment:fixed;
+}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.top{max-width:1120px;margin:auto;padding:18px 14px 8px}
+h1{letter-spacing:.18em;font-size:26px;margin:0 0 3px}
+.sub{font-size:10px;letter-spacing:.24em;color:#92776e}
+.controls{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.controls input{flex:1;min-width:220px;background:#eee;color:#222;border:1px solid #5b3b36;border-radius:5px;padding:11px}
+button{
+ background:linear-gradient(#742a35,#42171e);color:#f0ddd1;
+ border:1px solid #8b4a50;border-radius:6px;padding:10px 14px
+}
+button.alt{background:#171111;border-color:#50383a}
+button.small{padding:7px 10px;font-size:12px}
+#results{display:none;margin-top:10px;background:#120d0d;border:1px solid #56363a;border-radius:7px;padding:8px}
+.result{display:flex;gap:10px;padding:9px;border-bottom:1px solid #302022;align-items:center}
+.result:last-child{border:0}
+.result img{width:48px;height:68px;object-fit:cover;background:#222;border:1px solid #493536}
+.result .meta{flex:1;font-size:13px;min-width:0}.meta small{color:#9e8b82}
+.result button{padding:7px 9px;font-size:12px;white-space:nowrap}
+
+.cabinet{max-width:1120px;margin:8px auto 35px;padding:0 10px}
+.crown{height:92px;position:relative;background:linear-gradient(135deg,#080808,#201514 50%,#090909);border:2px solid #4b302b;border-bottom:4px solid #69443a;
+ clip-path:polygon(0 42%,9% 34%,23% 20%,38% 7%,50% 0,62% 7%,77% 20%,91% 34%,100% 42%,96% 100%,4% 100%)}
+.crown:after{content:"";position:absolute;inset:28px 20%;border-top:1px solid #8b604f;opacity:.6}
+.frame{background:linear-gradient(90deg,#120d0c,#241313 4%,#0a0909 9%,#140d0d 91%,#241313 96%,#120d0c);
+ border:7px solid #100b0b;outline:1px solid #51352f;box-shadow:0 0 0 2px #1f1413,0 30px 80px #000;padding:8px 12px 20px}
+.shelf{position:relative;margin:0 0 18px;min-height:205px;padding:42px 12px 20px;
+ background:linear-gradient(180deg,rgba(14,10,10,.94),rgba(22,12,14,.92) 45%,rgba(10,9,9,.96));
+ border-left:2px solid #271817;border-right:2px solid #271817;overflow:hidden}
+.shelf:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 10%,rgba(113,47,45,.09),transparent 45%);pointer-events:none}
+.shelf:after{content:"";position:absolute;left:-5px;right:-5px;bottom:-7px;height:9px;background:linear-gradient(#8a5747,#4a2b25 45%,#1d100e);border:1px solid #74483d;box-shadow:0 4px 10px #000}
+.shelf h2{position:absolute;left:17px;top:10px;margin:0;font-size:13px;letter-spacing:.22em;color:#d5c0b4;z-index:5}
+.shelf h2:before{content:"◆";color:#8f2935;font-size:8px;margin-right:9px}
+.books{position:relative;z-index:3;display:flex;align-items:flex-end;gap:8px;min-height:135px;overflow-x:auto;padding:8px 8px 0}
+.books::-webkit-scrollbar{height:3px}.books::-webkit-scrollbar-thumb{background:#53312c}
+.book{position:relative;height:142px;width:70px;min-width:52px;cursor:pointer;transform-origin:bottom center;transition:.18s;filter:drop-shadow(5px 7px 5px #000)}
+.book:hover{transform:translateY(-7px) rotate(-1deg)}
+.book .block{position:absolute;left:4px;right:4px;top:3px;bottom:3px;background:linear-gradient(90deg,#d8d0c2,#eee8db,#b9b1a5);border-radius:2px}
+.book .spine{position:absolute;left:0;top:0;bottom:0;width:calc(100% - 11px);z-index:3;border-radius:4px 1px 1px 4px;overflow:hidden;
+ background:linear-gradient(90deg,#431d25,#6a2833 48%,#35141b);border:1px solid rgba(255,255,255,.18);
+ box-shadow:inset -8px 0 0 rgba(0,0,0,.18),inset 2px 0 0 rgba(255,255,255,.08),inset 0 0 0 1px rgba(0,0,0,.25)}
+.book .spine.hascover{background-size:cover;background-position:center;filter:saturate(.78) brightness(.72)}
+.book .spine .shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.2),rgba(0,0,0,.05) 48%,rgba(0,0,0,.48))}
+.book .spine .fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:8px 5px;color:#eee;
+ writing-mode:vertical-rl;text-orientation:mixed;font-size:10px;letter-spacing:.08em;text-shadow:0 1px 2px #000}
+.book .orn{position:absolute;left:5px;right:15px;top:7px;height:3px;border-top:1px solid rgba(241,212,177,.5);border-bottom:1px solid rgba(241,212,177,.15);z-index:5}
+.book .bottommark{position:absolute;left:6px;right:15px;bottom:7px;height:3px;border-bottom:1px solid rgba(241,212,177,.4);z-index:5}
+.book .cover{position:absolute;right:-1px;top:2px;bottom:2px;width:17px;z-index:4;background-size:cover;background-position:center;border-radius:0 2px 2px 0;box-shadow:inset 2px 0 3px rgba(0,0,0,.55)}
+.book .pages{position:absolute;right:-5px;top:7px;bottom:7px;width:7px;background:repeating-linear-gradient(90deg,#eee8db 0 1px,#bdb5a7 1px 2px);z-index:2}
+.book .titlemark{position:absolute;z-index:6;left:5px;right:15px;bottom:14px;color:#fff;font-size:7px;text-align:center;text-shadow:0 1px 2px #000;white-space:nowrap;overflow:hidden}
+.book.tall{height:158px}.book.short{height:126px}
+.book.wide{width:82px}.book.thin{width:55px}
+.empty{color:#6f5c57;font-size:11px;letter-spacing:.08em;padding:42px 8px}
+.decor-layer{position:absolute;left:12px;right:12px;bottom:25px;height:55px;z-index:2;pointer-events:none}
+.decor{position:absolute;bottom:0;font-size:30px;filter:drop-shadow(3px 4px 3px #000);opacity:.9}
+.decor[data-d]="1"{font-size:35px}
+.bottom{padding:18px;border:1px solid #4b302d;background:#100c0c;text-align:center;color:#9b8178;font-size:11px;letter-spacing:.16em}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.84);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+.panel{width:min(760px,100%);max-height:92vh;overflow:auto;background:#120d0d;border:1px solid #68413b;box-shadow:0 20px 70px #000;padding:18px;border-radius:8px}
+.detail{display:flex;gap:18px}.detail img{width:150px;height:230px;object-fit:contain;background:#080808;border:1px solid #493536}
+.detail h3{margin:0 0 8px;font-size:21px}.detail p{color:#bca9a0;font-size:13px;line-height:1.5}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+.addform{display:none;margin-top:10px;padding:12px;background:#0e0a0a;border:1px solid #4b3030;border-radius:7px}
+.addgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.addgrid input,.addgrid select,.setting input,.setting select{background:#eee;color:#222;padding:9px;border-radius:5px;border:1px solid #59403b;width:100%}
+.section-title{font-size:14px;letter-spacing:.12em;color:#d7c2b5;margin:0 0 10px}
+.setting{padding:12px 0;border-bottom:1px solid #302022}
+.setting:last-child{border-bottom:0}
+.preview{height:110px;border:1px solid #4b3030;border-radius:6px;background-size:cover;background-position:center;margin-top:8px}
+.wallnote{color:#806d66;font-size:11px;line-height:1.4}
+@media(max-width:600px){
+ h1{font-size:21px}.controls input{flex-basis:100%}
+ .shelf{min-height:190px}.book{height:140px}.book.tall{height:153px}
+ .detail{flex-direction:column}.detail img{width:110px;height:170px}
+ .addgrid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>КНИЖНЫЙ ШКАФ</h1><div class="sub">VISUAL KEI · JAPANESE DARK CABINET</div>
+  <div class="controls">
+    <input id="q" placeholder="Название, автор или ISBN — ISBN не обязателен">
+    <button onclick="searchBooks()">Поиск</button>
+    <button class="alt" onclick="toggleAdd()">＋ Добавить</button>
+    <button class="alt" onclick="openDesign()">Оформление</button>
+    <button class="alt" onclick="openOpds()">Каталоги</button>
+  </div>
+  <div id="results"></div>
+  <div id="addform" class="addform">
+    <div class="addgrid">
+      <input id="atitle" placeholder="Название *"><input id="aauthor" placeholder="Автор *">
+      <input id="aisbn" placeholder="ISBN (необязательно)">
+      <select id="ashelf"><option value="now">Читаю сейчас</option><option value="read">Прочитано</option><option value="long">Долгострой</option><option value="note">На заметку</option><option value="attic">Антресоль</option></select>
+      <input id="acover" type="url" placeholder="Ссылка на обложку (необязательно)">
+      <input id="aspine" type="url" placeholder="Ссылка/фото корешка (необязательно)">
+    </div>
+    <div class="row"><button onclick="manualAdd()">Поставить на выбранную полку</button></div>
+    <small style="color:#806d66">ISBN не нужен. Обложку и корешок можно добавить позже через карточку книги.</small>
+  </div>
+</div>
+
+<div class="cabinet">
+  <div class="crown"></div>
+  <div class="frame" id="frame"></div>
+</div>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+ <div class="panel">
+   <div class="detail"><img id="dcover"><div><h3 id="dtitle"></h3><p id="dauthor"></p><p id="dmeta"></p></div></div>
+   <div class="row">
+     <select id="moveShelf" style="background:#eee;color:#222;padding:9px;border-radius:5px;border:1px solid #59403b"></select>
+     <button onclick="moveCurrent()">Переместить</button>
+     <button class="alt" onclick="deleteCurrent()">Удалить</button>
+     <button class="alt" onclick="closeModal()">Закрыть</button>
+   </div>
+ </div>
+</div>
+
+<div class="modal" id="designModal" onclick="if(event.target===this)closeDesign()">
+ <div class="panel">
+   <h3 class="section-title">ОФОРМЛЕНИЕ ШКАФА</h3>
+   <div class="setting">
+     <b>Обои</b>
+     <p class="wallnote">Загрузи картинку из телефона. Она останется только в этом браузере и не попадёт в репозиторий.</p>
+     <input id="wallFile" type="file" accept="image/*" onchange="setWallpaper(this)">
+     <div id="wallPreview" class="preview"></div>
+     <div class="row"><button class="alt small" onclick="clearWallpaper()">Вернуть стандартный фон</button></div>
+   </div>
+   <div class="setting">
+     <b>Декор</b>
+     <p class="wallnote">Добавь маленькую деталь на выбранную полку. Книги остаются главным объектом.</p>
+     <div class="addgrid">
+       <select id="decorShelf"><option value="now">Читаю сейчас</option><option value="read">Прочитано</option><option value="long">Долгострой</option><option value="note">На заметку</option><option value="attic">Антресоль</option></select>
+       <select id="decorType"><option value="🕯️">Свеча</option><option value="🏮">Фонарь</option><option value="🌸">Сакура</option><option value="🎎">Фигурка</option><option value="🐈">Кот</option><option value="🌿">Растение</option><option value="🎵">Музыка</option><option value="📜">Свиток</option></select>
+     </div>
+     <div class="row"><button onclick="addDecor()">Добавить деталь</button><button class="alt small" onclick="clearDecor()">Убрать весь декор</button></div>
+   </div>
+   <div class="row"><button class="alt" onclick="closeDesign()">Готово</button></div>
+ </div>
+</div>
+
+<div class="modal" id="opdsModal" onclick="if(event.target===this)closeOpds()">
+ <div class="panel"><h3 class="section-title">КАТАЛОГИ</h3>
+   <div id="opdsList"></div>
+   <div class="row"><input id="opdsUrl" placeholder="URL OPDS-каталога" style="flex:1;background:#eee;color:#222;padding:9px;border-radius:5px"><button onclick="addOpds()">Добавить</button></div>
+   <div class="row"><button class="alt" onclick="closeOpds()">Закрыть</button></div>
+ </div>
+</div>
+
+<script>
+const KEY='vkBooksV5';
+const DESIGN_KEY='vkCabinetDesignV1';
+let books=JSON.parse(localStorage.getItem(KEY)||'[]');
+let design=JSON.parse(localStorage.getItem(DESIGN_KEY)||'{"wall":"","decor":[]}');
+let current=null;
+const shelves=[['now','ЧИТАЮ СЕЙЧАС'],['read','ПРОЧИТАНО'],['long','ДОЛГОСТРОЙ'],['note','НА ЗАМЕТКУ'],['attic','АНТРЕСОЛЬ']];
+
+function save(){localStorage.setItem(KEY,JSON.stringify(books))}
+function saveDesign(){localStorage.setItem(DESIGN_KEY,JSON.stringify(design))}
+function esc(x){return String(x||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;")}
+function shelfName(id){return shelves.find(x=>x[0]===id)?.[1]||''}
+function bookClass(b,i){
+  const n=(b.title||'').length;
+  let c='book ';
+  c += n>42?'wide ':n<14?'thin ':'';
+  c += i%5===0?'tall ':i%7===0?'short ':'';
+  return c;
+}
+function render(){
+ const f=document.getElementById('frame'); f.innerHTML='';
+ shelves.forEach(([id,name])=>{
+   const s=document.createElement('section'); s.className='shelf';
+   s.innerHTML=`<h2>${name}</h2><div class="decor-layer"></div><div class="books"></div>`;
+   const dec=s.querySelector('.decor-layer');
+   design.decor.filter(d=>d.shelf===id).forEach((d,i)=>{
+     const e=document.createElement('div');e.className='decor';e.textContent=d.type;e.style.left=(10+i*15)+'%';dec.appendChild(e);
+   });
+   const box=s.querySelector('.books');
+   const list=books.filter(b=>b.shelf===id);
+   if(!list.length) box.innerHTML='<div class="empty">Здесь пока нет книг</div>';
+   list.forEach((b,i)=>{
+     const el=document.createElement('div'); el.className=bookClass(b,i); el.onclick=()=>openBook(b.id);
+     const cover=b.cover||'';
+     const spineStyle=cover?` style="background-image:url('${esc(cover)}')"`:'';
+     const fallback=cover?'':`<div class="fallback">${esc(b.title)}</div>`;
+     el.innerHTML=`<div class="block"></div><div class="spine ${cover?'hascover':''}"${spineStyle}><div class="shade"></div>${fallback}</div><div class="orn"></div><div class="pages"></div><div class="cover" style="background-image:url('${esc(cover)}')"></div><div class="bottommark"></div><div class="titlemark">${esc(b.title)}</div>`;
+     box.appendChild(el);
+   });
+   f.appendChild(s);
+ });
+ const bot=document.createElement('div');bot.className='bottom';bot.textContent='АРХИВ · КОЛЛЕКЦИИ · ЛИЧНЫЕ РЕЛИКВИИ';f.appendChild(bot);
+}
+function toggleAdd(){const x=document.getElementById('addform');x.style.display=x.style.display==='block'?'none':'block'}
+function manualAdd(){
+ const title=document.getElementById('atitle').value.trim(),author=document.getElementById('aauthor').value.trim();
+ if(!title||!author){alert('Нужно указать название и автора. ISBN не обязателен.');return}
+ books.push({id:crypto.randomUUID(),title,author,isbn:document.getElementById('aisbn').value.trim(),shelf:document.getElementById('ashelf').value,cover:document.getElementById('acover').value.trim(),spine:document.getElementById('aspine').value.trim()});
+ save();render();toggleAdd();
+ ['atitle','aauthor','aisbn','acover','aspine'].forEach(id=>document.getElementById(id).value='');
+}
+async function searchBooks(){
+ const q=document.getElementById('q').value.trim();if(!q)return;
+ const out=document.getElementById('results');out.style.display='block';
+ out.innerHTML='<div style="padding:8px;color:#a9948b">Ищу в книжных каталогах…</div>';
+ try{
+   const r=await fetch('/api/search?q='+encodeURIComponent(q));const data=await r.json();
+   if(!data.results?.length){out.innerHTML='<div style="padding:8px">Не найдено. Можно добавить книгу вручную — ISBN не нужен.</div>';return}
+   out.innerHTML=data.results.map(x=>`<div class="result"><img src="${esc(x.cover||'')}"><div class="meta"><b>${esc(x.title)}</b><br><small>${esc(x.author||'Автор не указан')} · ${esc(x.source||'Источник')}${x.isbn?' · ISBN '+esc(x.isbn):''}</small></div><button onclick='chooseShelf(${JSON.stringify(x).replaceAll("'","&#39;")})'>На полку</button></div>`).join('');
+ }catch(e){out.innerHTML='<div style="padding:8px;color:#d69a91">Сервер поиска недоступен.</div>'}
+}
+function chooseShelf(x){
+ const id='pickShelf';
+ const old=document.getElementById(id);if(old)old.remove();
+ const box=document.createElement('div');box.id=id;box.className='modal';box.style.display='flex';
+ box.innerHTML=`<div class="panel"><h3 class="section-title">КУДА ПОСТАВИТЬ?</h3><p style="color:#bca9a0;font-size:13px">${esc(x.title)}<br>${esc(x.author||'Автор не указан')}</p><div class="row">${shelves.map(s=>`<button onclick='addFound(${JSON.stringify(x).replaceAll("'","&#39;")},"${s[0]}")'>${s[1]}</button>`).join('')}</div><div class="row"><button class="alt" onclick="document.getElementById('pickShelf').remove()">Отмена</button></div></div>`;
+ document.body.appendChild(box);
+}
+function addFound(x,shelf){
+ books.push({id:crypto.randomUUID(),title:x.title,author:x.author||'Автор не указан',isbn:x.isbn||'',cover:x.cover||'',spine:'',shelf});
+ save();render();document.getElementById('pickShelf')?.remove();
+}
+function openBook(id){
+ current=books.find(b=>b.id===id);if(!current)return;
+ document.getElementById('dtitle').textContent=current.title;
+ document.getElementById('dauthor').textContent=current.author;
+ document.getElementById('dmeta').textContent=`${current.isbn?'ISBN: '+current.isbn+' · ':''}Полка: ${shelfName(current.shelf)}`;
+ document.getElementById('dcover').src=current.cover||'';
+ const sel=document.getElementById('moveShelf');sel.innerHTML=shelves.map(s=>`<option value="${s[0]}" ${s[0]===current.shelf?'selected':''}>${s[1]}</option>`).join('');
+ document.getElementById('modal').style.display='flex';
+}
+function closeModal(){document.getElementById('modal').style.display='none'}
+function moveCurrent(){if(!current)return;current.shelf=document.getElementById('moveShelf').value;save();render();openBook(current.id)}
+function deleteCurrent(){if(!current)return;if(confirm('Удалить книгу со шкафа?')){books=books.filter(b=>b.id!==current.id);save();current=null;closeModal();render()}}
+function openDesign(){document.getElementById('designModal').style.display='flex';document.getElementById('wallPreview').style.backgroundImage=design.wall?`url("${design.wall}")`:''}
+function closeDesign(){document.getElementById('designModal').style.display='none'}
+function setWallpaper(input){
+ const file=input.files?.[0];if(!file)return;
+ const reader=new FileReader();reader.onload=()=>{design.wall=reader.result;saveDesign();applyDesign();document.getElementById('wallPreview').style.backgroundImage=`url("${design.wall}")`};reader.readAsDataURL(file);
+}
+function applyDesign(){document.documentElement.style.setProperty('--wallpaper',design.wall?`url("${design.wall}")`:'none')}
+function clearWallpaper(){design.wall='';saveDesign();applyDesign();document.getElementById('wallPreview').style.backgroundImage='';document.getElementById('wallFile').value=''}
+function addDecor(){design.decor.push({shelf:document.getElementById('decorShelf').value,type:document.getElementById('decorType').value});saveDesign();render()}
+function clearDecor(){if(confirm('Убрать весь декор со всех полок?')){design.decor=[];saveDesign();render()}}
+let opds=JSON.parse(localStorage.getItem('vkOPDSV1')||'[]');
+function saveOpds(){localStorage.setItem('vkOPDSV1',JSON.stringify(opds))}
+function openOpds(){document.getElementById('opdsModal').style.display='flex';renderOpds()}
+function closeOpds(){document.getElementById('opdsModal').style.display='none'}
+function renderOpds(){const el=document.getElementById('opdsList');if(!opds.length){el.innerHTML='<div style="color:#806d66;font-size:12px">Пока нет подключённых каталогов.</div>';return}el.innerHTML=opds.map((u,i)=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #302022;font-size:12px"><span style="word-break:break-all">${esc(u)}</span><button class="alt" onclick="removeOpds(${i})">Удалить</button></div>`).join('')}
+function addOpds(){const u=document.getElementById('opdsUrl').value.trim();if(!/^https?:\/\//i.test(u)){alert('Нужен полный HTTP(S)-адрес OPDS-каталога.');return}const norm=u.replace(/\/+$/,'');if(!opds.includes(norm))opds.push(norm);saveOpds();document.getElementById('opdsUrl').value='';renderOpds()}
+function removeOpds(i){opds.splice(i,1);saveOpds();renderOpds()}
+applyDesign();render();
+</script>
+</body>
+</html>
