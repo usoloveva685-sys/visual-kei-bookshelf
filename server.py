@@ -841,6 +841,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         u = urllib.parse.urlsplit(self.path)
+        if u.path == "/":
+            self.path = "/static/index.html"
         if u.path == "/api/search":
             q = urllib.parse.parse_qs(u.query).get("q", [""])[0].strip()
             try:
