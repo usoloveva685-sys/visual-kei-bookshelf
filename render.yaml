@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: visual-kei-bookshelf
-    runtime: python
-    buildCommand: ""
-    startCommand: "python server.py"
-    plan: free
