@@ -173,7 +173,7 @@ def parse_generic_product(url, source_name):
     # вариантов извлечения названия/автора/ISBN из Markdown-текста.
     # For Читай-город the <h1> is the real book title; og:title is a
     # long marketing string such as "Ртуть ... купить книгу...".
-    if source == "Читай-город":
+    if if source_name == "Читай-город
         h1 = first_match(r'<h1[^>]*>(.*?)</h1>', page)
         if h1:
             title = strip_html(h1)
